@@ -10,34 +10,43 @@ import cartRoutes from "./routes/cart.route.js";
 import couponRoutes from "./routes/coupon.route.js";
 import paymentRoutes from "./routes/payment.route.js";
 import analyticsRoutes from "./routes/analytics.route.js";
-import cors from "cors"
 
-// Import MongoDB connection fn
-import connectDB from "./lib/db.js"; 
+import cors from "cors";
+
+// Import MongoDB connection function
+import connectDB from "./lib/db.js";
 
 const __dirname = path.resolve();
 
-// Resolve the correct path to the env 
+// Resolve correct .env path
 const envPath = path.join(__dirname, ".env");
 
 console.log("Loading .env from:", envPath);
-// Load environment var
+
+// Load environment variables
 dotenv.config({ path: envPath });
 
-// Check if MONGO_URI is being loaded correctly
-console.log("MONGO_URI from .env:", process.env.MONGO_URI); 
+// Check if MongoDB URI is loading
+console.log("MONGO_URI from .env:", process.env.MONGO_URI);
 
-// Start MongoDB connection (using the imported connectDB function)
+// Connect to MongoDB
 connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware setup
+// Middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
-app.use(cors("*"));
-// Route handlers
+
+app.use(
+	cors({
+		origin: "*",
+		credentials: true,
+	})
+);
+
+// API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/cart", cartRoutes);
@@ -47,15 +56,16 @@ app.use("/api/analytics", analyticsRoutes);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === "production") {
-    app.use(express.static(path.join(__dirname, "/frontend/dist")));
+	app.use(express.static(path.join(__dirname, "frontend", "dist")));
 
-    app.get("*", (req, res) => {
-        res.sendFile(path.resolve(__dirname, "frontend", "dist", "index.html"));
-    });
+	app.get("*", (req, res) => {
+		res.sendFile(
+			path.join(__dirname, "frontend", "dist", "index.html")
+		);
+	});
 }
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+	console.log(`Server is running on port ${PORT}`);
 });
-
