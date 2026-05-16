@@ -25,7 +25,7 @@ const OrderSummary = () => {
 
 		console.log(cart);
 
-		const res = await fetch("http://localhost:5000/api/payments/create-checkout-session",{
+		const res = await fetch("/api/payments/create-checkout-session",{
             method: "POST",
 			headers: {
 				"Content-Type": "application/json",
