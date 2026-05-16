@@ -1,0 +1,1 @@
+# Fix Stripe Success Redirect&#10;- [ ] Step 1: Edit backend/controllers/payment.controller.js (update success_url and cancel_url)&#10;- [ ] Step 2: Restart backend if needed (`cd backend &amp;&amp; npm start` or nodemon auto)&#10;- [ ] Step 3: Test full flow: Cart → Checkout → Stripe payment → Success page&#10;- [ ] Step 4: Test cancel flow
