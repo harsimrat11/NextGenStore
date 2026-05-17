@@ -147,4 +147,4 @@ async function createNewCoupon(userId) {
 
 	await newCoupon.save();
 }
-```
+export default PurchaseSuccessPage;
