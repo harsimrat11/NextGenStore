@@ -1,150 +1,92 @@
-```js id="7k2m9v"
-import Coupon from "../models/coupon.model.js";
-import Order from "../models/order.model.js";
-import { stripe } from "../lib/stripe.js";
+import { ArrowRight, CheckCircle, HandHeart } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useCartStore } from "../stores/useCartStore";
+import axios from "../lib/axios";
+import Confetti from "react-confetti";
+import { motion } from "framer-motion";
 
-export const createCheckoutSession = async (req, res) => {
-	try {
-		const { products, couponCode } = req.body;
+const PurchaseSuccessPage = () => {
+	const [isProcessing, setIsProcessing] = useState(true);
+	const { clearCart } = useCartStore();
+	const [error, setError] = useState(null);
 
-		if (!Array.isArray(products) || products.length === 0) {
-			return res.status(400).json({
-				error: "Invalid or empty products array",
-			});
-		}
+	useEffect(() => {
+		const handleCheckoutSuccess = async (sessionId) => {
+			try {
+				await axios.post("/payments/checkout-success", {
+					sessionId,
+				});
 
-		let totalAmount = 0;
-
-		const lineItems = products.map((product) => {
-			const amount = Math.round(product.price * 100);
-
-			totalAmount += amount * product.quantity;
-
-			return {
-				price_data: {
-					currency: "inr",
-					product_data: {
-						name: product.name,
-						images: [product.image],
-					},
-					unit_amount: amount,
-				},
-				quantity: product.quantity || 1,
-			};
-		});
-
-		let coupon = null;
-
-		if (couponCode) {
-			coupon = await Coupon.findOne({
-				code: couponCode,
-				userId: req.user._id,
-				isActive: true,
-			});
-
-			if (coupon) {
-				totalAmount -= Math.round(
-					(totalAmount * coupon.discountPercentage) / 100
-				);
+				clearCart();
+			} catch (error) {
+				console.log(error);
+				setError("Payment processing failed");
+			} finally {
+				setIsProcessing(false);
 			}
+		};
+
+		const sessionId = new URLSearchParams(
+			window.location.search
+		).get("session_id");
+
+		if (sessionId) {
+			handleCheckoutSuccess(sessionId);
+		} else {
+			setIsProcessing(false);
+			setError("No session ID found in URL");
 		}
+	}, [clearCart]);
 
-		const session = await stripe.checkout.sessions.create({
-			payment_method_types: ["card"],
-			line_items: lineItems,
-			mode: "payment",
+	if (isProcessing) return <div>Processing...</div>;
 
-			success_url:
-				"https://nextgenstore-1.onrender.com/purchase-success?session_id={CHECKOUT_SESSION_ID}",
+	if (error) return <div>Error: {error}</div>;
 
-			cancel_url:
-				"https://nextgenstore-1.onrender.com/purchase-cancel",
+	return (
+		<div className="h-screen flex items-center justify-center px-4">
+			<Confetti
+				width={window.innerWidth}
+				height={window.innerHeight}
+				gravity={0.1}
+				numberOfPieces={700}
+				recycle={false}
+			/>
 
-			metadata: {
-				userId: req.user._id.toString(),
-				couponCode: couponCode || "",
-			},
-		});
+			<div className="max-w-lg w-full mx-auto bg-gray-900 rounded-2xl p-8 shadow-2xl">
+				<div className="flex justify-center">
+					<CheckCircle className="text-green-500 w-16 h-16 mb-4" />
+				</div>
 
-		if (totalAmount >= 20000) {
-			await createNewCoupon(req.user._id);
-		}
+				<h1 className="text-3xl font-bold text-center text-white mb-4">
+					Purchase Successful!
+				</h1>
 
-		res.status(200).json({
-			id: session.id,
-			totalAmount: totalAmount / 100,
-		});
-	} catch (error) {
-		console.error("Error processing checkout:", error);
+				<p className="text-gray-300 text-center mb-6">
+					Thank you for your order.
+				</p>
 
-		res.status(500).json({
-			message: "Error processing checkout",
-			error: error.message,
-		});
-	}
+				<div className="space-y-4">
+					<motion.button
+						className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center"
+						whileHover={{ scale: 1.02 }}
+						whileTap={{ scale: 0.98 }}
+					>
+						<HandHeart className="mr-2" size={18} />
+						Thanks for trusting us!
+					</motion.button>
+
+					<Link
+						to="/"
+						className="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center"
+					>
+						Continue Shopping
+						<ArrowRight className="ml-2" size={18} />
+					</Link>
+				</div>
+			</div>
+		</div>
+	);
 };
 
-export const checkoutSuccess = async (req, res) => {
-	try {
-		const { sessionId } = req.body;
-
-		const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-		if (session.payment_status === "paid") {
-			if (session.metadata.couponCode) {
-				await Coupon.findOneAndUpdate(
-					{
-						code: session.metadata.couponCode,
-						userId: session.metadata.userId,
-					},
-					{
-						isActive: false,
-					}
-				);
-			}
-
-			const newOrder = new Order({
-				user: session.metadata.userId,
-				products: [],
-				totalAmount: session.amount_total / 100,
-				stripeSessionId: sessionId,
-			});
-
-			await newOrder.save();
-
-			res.status(200).json({
-				success: true,
-				message: "Payment successful, order created.",
-				orderId: newOrder._id,
-			});
-		}
-	} catch (error) {
-		console.error("Error processing successful checkout:", error);
-
-		res.status(500).json({
-			message: "Error processing successful checkout",
-			error: error.message,
-		});
-	}
-};
-
-async function createNewCoupon(userId) {
-	await Coupon.findOneAndDelete({ userId });
-
-	const newCoupon = new Coupon({
-		code:
-			"GIFT" +
-			Math.random().toString(36).substring(2, 8).toUpperCase(),
-
-		discountPercentage: 10,
-
-		expirationDate: new Date(
-			Date.now() + 30 * 24 * 60 * 60 * 1000
-		),
-
-		userId: userId,
-	});
-
-	await newCoupon.save();
-}
 export default PurchaseSuccessPage;
