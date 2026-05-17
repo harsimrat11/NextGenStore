@@ -1,9 +1,15 @@
+import Coupon from "../models/coupon.model.js";
+import Order from "../models/order.model.js";
+import { stripe } from "../lib/stripe.js";
+
 export const createCheckoutSession = async (req, res) => {
 	try {
 		const { products, couponCode } = req.body;
 
 		if (!Array.isArray(products) || products.length === 0) {
-			return res.status(400).json({ error: "Invalid or empty products array" });
+			return res.status(400).json({
+				error: "Invalid or empty products array",
+			});
 		}
 
 		let totalAmount = 0;
@@ -76,3 +82,72 @@ export const createCheckoutSession = async (req, res) => {
 		});
 	}
 };
+
+export const checkoutSuccess = async (req, res) => {
+	try {
+		const { sessionId } = req.body;
+
+		const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+		if (session.payment_status === "paid") {
+			if (session.metadata.couponCode) {
+				await Coupon.findOneAndUpdate(
+					{
+						code: session.metadata.couponCode,
+						userId: session.metadata.userId,
+					},
+					{
+						isActive: false,
+					}
+				);
+			}
+
+			const newOrder = new Order({
+				user: session.metadata.userId,
+				products: [],
+				totalAmount: session.amount_total / 100,
+				stripeSessionId: sessionId,
+			});
+
+			await newOrder.save();
+
+			res.status(200).json({
+				success: true,
+				message: "Payment successful, order created.",
+				orderId: newOrder._id,
+			});
+		} else {
+			res.status(400).json({
+				success: false,
+				message: "Payment not completed",
+			});
+		}
+	} catch (error) {
+		console.error("Error processing successful checkout:", error);
+
+		res.status(500).json({
+			message: "Error processing successful checkout",
+			error: error.message,
+		});
+	}
+};
+
+async function createNewCoupon(userId) {
+	await Coupon.findOneAndDelete({ userId });
+
+	const newCoupon = new Coupon({
+		code:
+			"GIFT" +
+			Math.random().toString(36).substring(2, 8).toUpperCase(),
+
+		discountPercentage: 10,
+
+		expirationDate: new Date(
+			Date.now() + 30 * 24 * 60 * 60 * 1000
+		),
+
+		userId,
+	});
+
+	await newCoupon.save();
+}
